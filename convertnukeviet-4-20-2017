@@ -1,0 +1,682 @@
+<?php
+/**
+ * @Project NUKEVIET 4.x
+ * @Author VINADES.,JSC (contact@vinades.vn)
+ * @Copyright (C) 2014 VINADES.,JSC. All rights reserved
+ * @License GNU/GPL version 2 or any later version
+ * @Createdate 31/05/2010, 00:36
+ */
+define ( 'NV_SYSTEM', true );
+
+// Xac dinh thu muc goc cua site
+define ( 'NV_ROOTDIR', pathinfo ( str_replace ( DIRECTORY_SEPARATOR, '/', __file__ ), PATHINFO_DIRNAME ) );
+// Ket noi den mainfile.php nam o thu muc goc.
+$realpath_mainfile = $set_active_op = '';
+
+require NV_ROOTDIR . '/includes/mainfile.php';
+
+if ($sys_info ['allowed_set_time_limit']) {
+	set_time_limit ( 1200 );
+}
+if (NV_CLIENT_IP != '127.0.0.1') {
+	die ( NV_CLIENT_IP );
+}
+
+/* Lấy thông tin users */
+/*
+ * $prefix2 = "lvq";
+ * $user_prefix2 = "lvq";
+ *
+ * $db->query( "DELETE FROM `nv4_users`" );
+ * $db->query( "DELETE FROM `nv4_users_info`" );
+ * $db->query( "DELETE FROM `nv4_authors`" );
+ *
+ * try
+ * {
+ * $result = $db->query( "SELECT * FROM `" . $user_prefix2 . "_user`" );
+ * while( $_user = $result->fetch() )
+ * {
+ * $_user['in_groups'] = $_user['is_admin'];
+ * $_user['birthday'] = 0;
+ * $_user['view_mail'] = 0;
+ * $global_config['idsite'] = 0;
+ *
+ * $md5 = $_user['upass'];
+ * $ret = '';
+ * for( $i = 0; $i < 32; $i += 2 )
+ * {
+ * $ret .= chr( hexdec( $md5{$i + 1} ) + hexdec( $md5{$i} ) * 16 );
+ * }
+ *
+ * $password = '{MD5}' . base64_encode( $ret );
+ *
+ * $md5username = nv_md5safe( $_user['uname'] );
+ *
+ * $sql = "INSERT INTO " . NV_USERS_GLOBALTABLE . " (
+ * username, md5username, password, email, first_name, last_name, gender, birthday, sig, regdate,
+ * question, answer, passlostkey, view_mail,
+ * remember, in_groups, active, checknum, last_login, last_ip, last_agent, last_openid, idsite)
+ * VALUES (
+ * :username,
+ * :md5_username,
+ * :password,
+ * :email,
+ * :first_name,
+ * :last_name,
+ * :gender,
+ * " . $_user['birthday'] . ",
+ * :sig,
+ * " . NV_CURRENTTIME . ",
+ * :question,
+ * :answer,
+ * '',
+ * " . $_user['view_mail'] . ",
+ * 1,
+ * '" . implode( ',', $_user['is_admin'] ) . "', 1, '', 0, '', '', '', " . $global_config['idsite'] . ")";
+ * $data_insert = array();
+ * $data_insert['username'] = $_user['uname'];
+ * $data_insert['md5_username'] = $md5username;
+ * $data_insert['password'] = $password;
+ * $data_insert['email'] = $_user['email'];
+ * $data_insert['first_name'] = '';
+ * $data_insert['last_name'] = '';
+ * $data_insert['gender'] = '';
+ * $data_insert['sig'] = '';
+ * $data_insert['question'] = '';
+ * $data_insert['answer'] = '';
+ *
+ * try
+ * {
+ * $stmt = $db->prepare( $sql );
+ * foreach( $data_insert as $key => $value )
+ * {
+ * $stmt->bindParam( ':' . $key, $data_insert[$key], PDO::PARAM_STR, strlen( $value ) );
+ * }
+ *
+ * $stmt->execute();
+ * $userid = $db->lastInsertId();
+ *
+ * }
+ * catch( PDOException $e )
+ * {
+ * echo ( $e->getMessage() . '<br>' );
+ * }
+ *
+ * if( $userid )
+ * {
+ * $db->query( 'INSERT INTO ' . NV_USERS_GLOBALTABLE . '_info (userid) VALUES (' . $userid . ')' );
+ * $db->query( "INSERT INTO `nv4_authors` (`admin_id`, `editor`, `lev`, `files_level`, `position`, `addtime`, `edittime`, `is_suspend`, `susp_reason`, `check_num`, `last_login`, `last_ip`, `last_agent`) VALUES
+ * (" . $userid . ", 'ckeditor', 2, 'adobe,archives,audio,documents,flash,images,real,video|1|1|1', " . $db->quote( $_user['name'] ) . ", 0, 0, 0, '', '', 0, '', '')" );
+ * }
+ *
+ * }
+ * }
+ * catch( PDOException $e )
+ * {
+ * print_r( $e );
+ * }
+ * print_r( 'Xong user' );
+ */
+
+try {
+	global $module_data, $lang_im, $lang_fix;
+	$module_data = 'news';
+	$lang_im = 'vi';
+	$lang_fix = $db_config ['prefix'] . '_' . $lang_im;
+	$idold = $nv_Request->get_string ( 'id', 'get', '0' );
+	if ($idold == '0') {
+		$_query = $db->query ( "SELECT `catid` FROM `" . $lang_fix . "_" . $module_data . "_cat` WHERE 1" );
+		while ( $row = $_query->fetch () ) {
+			$db->query ( "DROP TABLE IF EXISTS `" . $lang_fix . "_" . $module_data . "_" . $row ['catid'] . "`" );
+		}
+		$result = $db->query ( 'SHOW TABLE STATUS LIKE ' . $db->quote ( $lang_fix . '\_' . $module_data . '\_%' ) );
+		while ( $item = $result->fetch () ) {
+			$db->query ( 'TRUNCATE ' . $item ['name'] );
+		}
+
+		// Thêm cat
+		addCat ( $id_domain );
+	} else {
+		$id_end = $db->query ( 'SELECT page_id FROM `tbl_page` ORDER BY page_id DESC LIMIT 1' )->fetchcolumn ();
+		if ($idold == $id_end) {
+			updateCatHome ();
+		}
+	}
+
+	// Thêm rows
+	addRow ( $idold );
+} catch ( PDOException $e ) {
+	die ( $e->getMessage () );
+}
+
+function updateBodyText(){
+	global $db, $lang_fix, $module_data;
+	$_query = $db->query ( "SELECT id, bodyhtml FROM `" . $lang_fix . "_" . $module_data . "_detail`" );
+	while ( $row = $_query->fetch () ) {
+		if(preg_match_all ( "/\<a[^\>]*href=\"([^\"]+)\"[^\>]*\>(.*)\<\/a\>/isU", $row['bodyhtml'], $match )){
+			foreach ( $match [0] as $key => $_m ) {
+			print_r('Link key: '. $match[1][$key] .'<br/>');
+			if (strpos ( $match [1] [$key], '/uploads/files' ) !== false) {
+				print_r('<br/>body trước:'.$row['bodyhtml']);
+				$row['bodyhtml'] = str_replace ( '/uploads/files', '/uploads/news/files', $row['bodyhtml'] );
+				$db->query ( 'update ' . $lang_fix . '_' . $module_data . '_detail set bodyhtml = '.$db->quote($row['bodyhtml']).' where id=' . $row ['id'] );
+				print_r('<br/>body sau:'.$row['bodyhtml']);print_r('<br/>');
+			}
+		}
+		}
+
+	}
+	die('p');
+}
+// update cat ngoài home
+function updateCatHome() {
+	global $db, $lang_fix, $module_data;
+	$count = $count_sum = 0;
+	$_query = $db->query ( "SELECT `catid` FROM `" . $lang_fix . "_" . $module_data . "_cat` WHERE 1" );
+	while ( $row = $_query->fetch () ) {
+		$count_sum = $db->query ( "SELECT COUNT(*) FROM `" . $lang_fix . "_" . $module_data . "_" . $row ['catid'] . "`" )->fetchcolumn ();
+		$count = $db->query ( "SELECT COUNT(*) FROM `" . $lang_fix . "_" . $module_data . "_" . $row ['catid'] . "` WHERE exptime != 0 AND exptime < " . NV_CURRENTTIME )->fetchcolumn ();
+		if ($count_sum == $count) {
+			$db->query ( 'update ' . NV_PREFIXLANG . '_' . $module_data . '_cat set inhome = 0, description = "" where catid =' . $row ['catid'] );
+		} else {
+			$db->query ( 'update ' . NV_PREFIXLANG . '_' . $module_data . '_cat set description = "" where catid=' . $row ['catid'] );
+		}
+	}
+	die ( '----------<h1>Lấy dữ liệu thành công</h1>--------' );
+}
+
+/* Lấy bài viết */
+function addRow($idold) {
+	global $db, $lang_fix, $module_data, $db2, $nv_Request, $global_config;
+	$limit = 120;
+	$id_check = 0;
+
+	$sql_row = $db->query ( 'SELECT `page_id`, `title`, `link`, `addTitles`, `addKeywords`, `highlights`, `focus`, `page_cid`, `userid`, `image`, `description`, `info`, `view`, `active`, `date`, `lastedit`, `file1`, `file2`, `file3`, `direction`, `publish_date` FROM `tbl_page` WHERE page_cid !=0 AND page_id > ' . $idold . ' AND page_cid IN (SELECT `catid` FROM nv4_vi_news_cat) ORDER BY page_id ASC LIMIT ' . $limit );
+
+	$allowed_rating = 1;
+	$hitstotal = 0;
+	$hitscm = 0;
+	$total_rating = 0;
+	$click_rating = 0;
+	$allowed_comm = 1;
+	$aray_table_bodyhtml = array ();
+	$homeimgfile = '';
+
+	while ( $row_news = $sql_row->fetch () ) {
+		$id = 0;
+		$_array = $db->query ( 'SELECT parentid FROM nv4_vi_news_cat WHERE parentid !=0 AND catid = ' . $row_news ['page_cid'] )->fetchAll ();
+
+		$hitstotal = $row_news ['view'];
+
+		$catids = array ();
+		$catids [0] = $row_news ['page_cid'];
+		foreach ( $_array as $key => $_row_i ) {
+			$catids [] = $_row_i ['parentid'];
+		}
+		$catid = $catids [0];
+
+		file_put_contents ( NV_UPLOADS_REAL_DIR . '/news/test.txt', $row_news ['page_id'] . "\n", FILE_APPEND | LOCK_EX );
+
+		$row_news ['description'] = mb_convert_encoding ( $row_news ['description'], 'windows-1252', 'UTF-8' );
+		$hometext = $row_news ['description'];
+		$addtime = 0;
+		if (preg_match ( "/^([0-9]{1,2})\/([0-9]{1,2})\/([0-9]{4})$/", $row_news ['date'], $m )) {
+			$addtime = mktime ( 0, 0, 0, $m [2], $m [1], $m [3] );
+		}
+		$modifitime = 0;
+		$startdatetime = $addtime;
+		$enddatetime = 0;
+		if (! empty ( $addtime ) and $row_news ['active'] == 0) {
+			$enddatetime = mktime ( 0, 0, 0, $m [2], $m [1], $m [3] + 1 );
+		}
+
+		/* xử lý ảnh minh họa */
+		$homeimgthumb = 0;
+		$dirimg = "";
+		$month_upload_dir = nv_mkdir ( NV_UPLOADS_REAL_DIR . '/news', date ( "Y", $addtime ) ); // Thu muc uploads theo thang
+		$dirimg = date ( "Y", $addtime ) . "/";
+		$homeimgfile = $row_news ['image'];
+		if (! empty ( $row_news ['image'] )) {
+			$homeimgthumb = 1;
+			$file_basename_new = string_to_filename ( basename ( $row_news ['image'] ) );
+			echo (NV_ROOTDIR . '/uploadold/uploads/' . $row_news ['image'] . '<br><br>' . NV_UPLOADS_REAL_DIR . "/news/" . $dirimg . $file_basename_new . '<br><br>');
+			if (file_exists ( NV_ROOTDIR . '/uploadold/uploads/' . $row_news ['image'] )) {
+				copy ( NV_ROOTDIR . '/uploadold/uploads/' . $row_news ['image'], NV_UPLOADS_REAL_DIR . "/news/" . $dirimg . $file_basename_new );
+				$homeimgfile = $dirimg . $file_basename_new;
+			} else {
+				print_r ( '--------<h3>Tải ảnh về</h3>: ---------' . $row_news ['page_id'] . '<br/>' );
+			}
+		}
+
+		/* Xử lý ảnh của body */
+		$row_news ['info'] = mb_convert_encoding ( $row_news ['info'], 'windows-1252', 'UTF-8' );
+		if (empty ( $row_news ['info'] )) {
+			$row_news ['info'] = str_replace(':', '', $row_news ['description']);
+			$hometext = '';
+		}
+
+		$row_news ['info'] = str_replace ( 'alt=""', '', $row_news ['info'] );
+		if (preg_match_all ( "/\<img[^\>]*src=\"([^\"]*)\"[^\>]*\>/is", $row_news ['info'], $match )) {
+			foreach ( $match [0] as $key => $_m ) {
+				print_r ( '<br/>link body trước---------: ' . $match [1] [$key] . '<br/>' );
+				$_link_source = $match [1] [$key];
+				$match [1] [$key] = rawurldecode ( $match [1] [$key] );
+
+				if (file_exists ( NV_ROOTDIR . '/uploadold' . $match [1] [$key] )) {
+					$file_basename_new = string_to_filename ( basename ( $match [1] [$key] ) );
+					copy ( NV_ROOTDIR . '/uploadold' . $match [1] [$key], NV_UPLOADS_REAL_DIR . "/news/" . $dirimg . $file_basename_new );
+					$row_news ['info'] = str_replace ( $_link_source, NV_BASE_SITEURL . NV_UPLOADS_DIR . '/' . $module_data . '/' . $dirimg . $file_basename_new, $row_news ['info'] );
+				} else {
+					if (strpos ( $match [1] [$key], 'http://www.binhphuoc.gov.vn/3cm/3cms' ) !== false) {
+						continue;
+					} elseif (strpos ( $match [1] [$key], 'http://www.binhphuoc.gov.vn/3cm/3cm/3cm/3cms' ) !== false) {
+						continue;
+					} elseif (strpos ( $match [1] [$key], 'http://vnexpress.net/Files/Subject/' ) !== false) {
+						continue;
+					} elseif (strpos ( $match [1] [$key], 'http://vnexpress.net/phienbancu.tuoitre.vn/' ) !== false) {
+						continue;
+					} elseif (strpos ( $match [1] [$key], 'file//' ) !== false) {
+						continue;
+					} elseif (strpos ( $match [1] [$key], 'http://www.thanhnien.com.vn/Pictures/' ) !== false) {
+						continue;
+					} elseif (strpos ( $match [1] [$key], 'http://images1.tuoitre.vn/' ) !== false) {
+						continue;
+					} elseif (strpos ( $match [1] [$key], 'http://images.tuoitre.vn' ) !== false) {
+						continue;
+					} elseif (strpos ( $match [1] [$key], 'http://one.chinhphu.vn:7575/' ) !== false) {
+						continue;
+					} elseif (strpos ( $match [1] [$key], 'http://vtcdn.com/' ) !== false) {
+						continue;
+					} elseif (strpos ( $match [1] [$key], 'http://www.thanhnien.com.vn/Pictures201406' ) !== false) {
+						continue;
+					} elseif (strpos ( $match [1] [$key], 'http://dongxoai.gov.vn/3cms/' ) !== false) {
+						continue;
+					} elseif (strpos ( $match [1] [$key], 'http://d.f11.photo.zdn.vn/upload/original' ) !== false) {
+						continue;
+					} elseif (strpos ( $match [1] [$key], 'https://dl.dropboxusercontent.com/' ) !== false) {
+						continue;
+					} else {
+						$link_copy_body = $match [1] [$key];
+						$e = explode ( '/', $link_copy_body );
+						$name_img = $e [sizeof ( $e ) - 1];
+						$name_img_file = NV_UPLOADS_REAL_DIR . "/news/" . $dirimg . $name_img;
+
+						echo '-----Anh noi dung------' . $link_copy_body . '<br>';
+
+						$link_copy_body = rawurldecode ( $link_copy_body );
+
+						echo ('<h1>file ben ngoai server</h1>:' . $link_copy_body);
+
+						$link_copy_body = str_replace ( " ", "%20", $link_copy_body );
+						// $link_copy_body = rawurldecode($link_copy_body);
+						$_image = new NukeViet\Files\Image ( $link_copy_body, NV_MAX_WIDTH, NV_MAX_HEIGHT );
+						$_image->save ( NV_ROOTDIR . '/uploads/' . $module_data . '/' . $dirimg, $name_img );
+						$image_info = $_image->create_Image_info;
+						$kt = 0;
+
+						if (empty ( $image_info ['src'] )) {
+							print_r ( '<br/>---------LỖI ẢNH----------: link lỗi: ' . NV_ROOTDIR . '/uploadold' . $link_copy_body . '<br/>' . $match [1] [$key] . '----- id: ' . $row_news ['page_id'] . '<br/>' );
+						} else {
+							$kt = 1;
+						}
+						if ($kt == 1) {
+							$newfile = string_to_filename ( basename ( $name_img ) );
+							nv_renamefile ( $image_info ['src'], NV_UPLOADS_REAL_DIR . '/' . $module_data . '/' . $dirimg . $newfile );
+							// thay thế lại đường dẫn ảnh trong nội dung
+							$row_news ['info'] = str_replace ( $_link_source, NV_BASE_SITEURL . NV_UPLOADS_DIR . '/' . $module_data . '/' . $dirimg . $newfile, $row_news ['info'] );
+						}
+					}
+				}
+			}
+		}
+
+		/* Lấy file document */
+		nv_mkdir ( NV_UPLOADS_REAL_DIR . '/news', date ( "Y", $addtime ) );
+		if (! empty ( $month_upload_dir [0] ) and is_writable ( NV_UPLOADS_REAL_DIR . '/news/' . date ( "Y", $addtime ) )) {
+			$dirimg = date ( "Y", $addtime ) . "/";
+		}
+		// Get link tags
+
+		$bodytext = $row_news ['info'];
+		if (preg_match_all ( "/\<a[^\>]*href=\"([^\"]+)\"[^\>]*\>(.*)\<\/a\>/isU", $bodytext, $match )) {
+			foreach ( $match [0] as $key => $_m ) {
+				$_file_source = $match [1] [$key];
+				print_R ( '<br> file body nào:-------' . NV_ROOTDIR . '/uploadold' . $_file_source );
+				$match [1] [$key] = rawurldecode ( $match [1] [$key] );
+				if (strpos ( $match [1] [$key], 'exe' ) !== false) {
+					continue;
+				}
+				if (file_exists ( NV_ROOTDIR . '/uploadold' . $match [1] [$key] )) {
+					$file_basename_new = string_to_filename ( basename ( $match [1] [$key] ) );
+					copy ( NV_ROOTDIR . '/uploadold' . $match [1] [$key], NV_UPLOADS_REAL_DIR . "/news/" . $dirimg . $file_basename_new );
+					$bodytext = str_replace ( $_file_source, NV_BASE_SITEURL . NV_UPLOADS_DIR . '/' . $module_data . '/' . $dirimg . $file_basename_new, $bodytext );
+				} else {
+					print_r ( '<h3>Link file docx: </h3>' . $match [1] [$key] );
+					$file_basename = basename ( $match [1] [$key] );
+					$file_src = $match [1] [$key];
+					$directory = NV_UPLOADS_REAL_DIR . "/news/" . $dirimg;
+					$url = rawurldecode ( $file_src );
+					print_r ( '<h1>Tải trên mạng: </h1>:' . $url );
+
+					$upload = new NukeViet\Files\Upload ( $global_config ['file_allowed_ext'], $global_config ['forbid_extensions'], $global_config ['forbid_mimes'], NV_UPLOAD_MAX_FILESIZE, NV_MAX_WIDTH, NV_MAX_HEIGHT );
+					$upload->setLanguage ( $lang_global );
+					$upload_info = $upload->save_urlfile ( $url, $directory, false );
+					if (empty ( $upload_info ['error'] )) {
+						print_r ( 'OK FILE---------------:' . $match [1] [$key] . '<br/>' );
+						$nv_pathinfo_filename = nv_pathinfo_filename ( $upload_info ['name'] );
+						$bodytext = str_replace ( $_file_source, NV_BASE_SITEURL . NV_UPLOADS_DIR . '/' . $module_data . '/' . $dirimg . $nv_pathinfo_filename . '.' . $upload_info ['ext'], $bodytext );
+					} else {
+						print_r ( '<h3>LỖI FILE---------------:</h3>' . $url . '<br/>' );
+					}
+				}
+			}
+		}
+
+		/* Lấy file docx tải về */
+		$row_news ['file1'] = mb_convert_encoding ( $row_news ['file1'], 'windows-1252', 'UTF-8' );
+		$row_news ['file1'] = rawurldecode ( $row_news ['file1'] );
+
+		if (! empty ( $row_news ['file1'] ) and file_exists ( NV_ROOTDIR . '/uploadold/' . $row_news ['file1'] )) {
+			$file_basename_new = string_to_filename ( basename ( $row_news ['file1'] ) );
+			copy ( NV_ROOTDIR . '/uploadold/uploads/' . $row_news ['file1'], NV_UPLOADS_REAL_DIR . "/news/" . $dirimg . $file_basename_new );
+			$link = '<a href="' . NV_BASE_SITEURL . NV_UPLOADS_DIR . '/' . $module_data . '/' . $dirimg . $file_basename_new . '"> <b> Tải về </b> </a>';
+			$bodytext .= '<br/>File đính kèm:<br/>' . $link;
+		}
+		else {
+			if (preg_match('/Nhấn(.*)/', $bodytext, $_text)) {
+				$bodytext = str_replace ($_text[0], '', $bodytext );
+			}
+
+		}
+
+		$bodyhtml = $bodytext;
+
+		$publtime = (empty ( $startdatetime )) ? $createdatetime : $startdatetime;
+		$sql = 'INSERT INTO ' . $lang_fix . '_' . $module_data . '_rows
+				(catid, listcatid, topicid, admin_id, author, sourceid, addtime, edittime, status, publtime, exptime, archive, title, alias, hometext, homeimgfile, homeimgalt, homeimgthumb, inhome, allowed_comm, allowed_rating, hitstotal, hitscm, total_rating, click_rating) VALUES
+				 (
+				 ' . intval ( $catid ) . ',
+				 :listcatid,
+				 0,
+				 0,
+				 :author,
+				 0,
+				 ' . intval ( $addtime ) . ',
+				 ' . intval ( $modifitime ) . ',
+				 1,
+				 ' . intval ( $publtime ) . ',
+				 ' . intval ( $enddatetime ) . ',
+				 1,
+				 :title,
+				 :alias,
+				 :hometext,
+				 :homeimgfile,
+				 :homeimgalt,
+				 :homeimgthumb,
+				 1,
+				 ' . $allowed_comm . ',
+				 ' . intval ( $allowed_rating ) . ',
+				 ' . intval ( $hitstotal ) . ',
+				 ' . intval ( $hitscm ) . ',
+				 ' . intval ( $total_rating ) . ',
+				 ' . intval ( $click_rating ) . ')';
+
+		$homeimgalt = '';
+		$sourcetext = '';
+		$hometext = nv_get_plaintext ( $hometext );
+		$hometext = trim ( $hometext, '&nbsp;' );
+		$data_insert = array ();
+		$data_insert ['listcatid'] = implode ( ',', $catids );
+		$data_insert ['author'] = '';
+		$row_news ['title'] = mb_convert_encoding ( $row_news ['title'], 'windows-1252', 'UTF-8' );
+		$data_insert ['title'] = $row_news ['title'];
+
+		$data_insert ['alias'] = change_alias ( $data_insert ['title'] );
+		$data_insert ['hometext'] = $hometext;
+		$data_insert ['homeimgfile'] = $homeimgfile;
+		$data_insert ['homeimgalt'] = $homeimgalt;
+		$data_insert ['homeimgthumb'] = $homeimgthumb;
+		try {
+
+			try {
+				$stmt = $db->prepare ( $sql );
+				foreach ( array_keys ( $data_insert ) as $key ) {
+					$stmt->bindParam ( ':' . $key, $data_insert [$key], PDO::PARAM_STR, strlen ( $data_insert [$key] ) );
+				}
+
+				$stmt->execute ();
+				$id = $db->lastInsertId ();
+			} catch ( PDOException $e ) {
+				echo '<pre>';
+				print_r ( $e );
+				echo '</pre>';
+				echo '<br>articleid = ' . $row_news ['page_id'] . '<br>';
+				die ( '$enddatetime=' . $enddatetime );
+			}
+
+			if ($id > 0) {
+				// insert detail
+				$stmt = $db->prepare ( 'INSERT INTO ' . $lang_fix . '_' . $module_data . '_detail (`id`, `titlesite`, `description`, `bodyhtml`, `sourcetext`, `imgposition`, `copyright`, `allowed_send`, `allowed_print`, `allowed_save`, `gid`) VALUES
+					(' . $id . ',
+					' . $db->quote ( '' ) . ',
+					 ' . $db->quote ( '' ) . ',
+					 ' . $db->quote ( $bodyhtml ) . ',
+					 ' . $db->quote ( $sourcetext ) . ',
+					 1,
+					 1,
+					 1,
+					 1,
+					 1,
+					 0
+					 )' );
+				$stmt->execute ();
+				foreach ( $catids as $catid ) {
+					$ct_query [] = ( int ) $db->exec ( 'INSERT INTO ' . $lang_fix . '_' . $module_data . '_' . $catid . ' SELECT * FROM ' . $lang_fix . '_' . $module_data . '_rows WHERE id=' . $id );
+				}
+				$id_check = $row_news ['page_id'];
+				if (array_sum ( $ct_query ) != sizeof ( $ct_query )) {
+					echo '<b>ERROR 395: ' . $row_news ['title'] . '</b><br>';
+				} else {
+					echo $row_news ['title'] . '<br>';
+				}
+				unset ( $ct_query );
+			} else {
+				echo '<b>ERROR 401: ' . $row_news ['title'] . '</b><br>';
+			}
+		} catch ( PDOException $e ) {
+			die ( $e->getMessage () );
+		}
+	}
+	if ($id_check > 0) {
+		echo '<h2>Dang thuc hien</h2>';
+		echo '<br>sqltomysqlDX.php?id=' . $id_check . '<br>';
+		echo ('<meta http-equiv="refresh" content="0;url=/sqltomysqlDX.php?id=' . $id_check . '">');
+	} else {
+		echo '<b>ERROR 411: ' . $id_check . '</b><br>';
+	}
+}
+
+/* Thêm cat */
+function addCat($idsite) {
+	global $db, $lang_fix, $module_data;
+	$viewcat = 'viewcat_page_new';
+	$weight = 0;
+	$admin_id = 0;
+
+	$_sql = 'SELECT `page_cid`, `name`, `parent`, `language`, `link`, `show_contact`, `show_in_category_module`, `show_item_contact`, `addTitles`, `addKeywords`, `position`, `description`, `groupName`, `show_position` FROM `tbl_page_cat` WHERE language = "vietnam" ORDER BY `position` ASC';
+	$_query = $db->query ( $_sql );
+	$i = 0;
+	$arr_title = $arr_organ = array ();
+	$inhome = 0;
+	while ( $row = $_query->fetch () ) {
+		$count = 0;
+		$row ['name'] = mb_convert_encoding ( $row ['name'], 'windows-1252', 'UTF-8' );
+		++ $weight;
+		if ($row ['show_position'] != 'other')
+			$inhome = 1;
+		else
+			$inhome = 0;
+		$count = $db->query ( 'SELECT COUNT(*) FROM `nv4_vi_news_cat` WHERE `alias` = ' . $db->quote ( change_alias ( $row ['name'] ) ) )->fetchColumn ();
+		if ($count > 0)
+			$row ['link'] = change_alias ( $row ['name'] ) . '-' . $row ['page_cid'];
+		else
+			$row ['link'] = change_alias ( $row ['name'] );
+
+		nv_create_table_cat ( $row ['page_cid'], $weight, $viewcat, $module_data, $row ['name'], $row ['link'], $admin_id, $row ['parent'], $row ['description'], $inhome );
+	}
+}
+function nv_create_table_news($lang, $module_data, $newcatid) {
+	global $db, $lang_fix, $module_data;
+	$db->query ( "CREATE TABLE " . $lang_fix . "_" . $module_data . "_" . $newcatid . "(
+	 id int(11) unsigned NOT NULL auto_increment,
+	 catid smallint(5) unsigned NOT NULL default '0',
+	 listcatid varchar(255) NOT NULL default '',
+	 topicid smallint(5) unsigned NOT NULL default '0',
+	 admin_id mediumint(8) unsigned NOT NULL default '0',
+	 author varchar(250) default '',
+	 sourceid mediumint(8) NOT NULL default '0',
+	 addtime int(11) unsigned NOT NULL default '0',
+	 edittime int(11) unsigned NOT NULL default '0',
+	 status tinyint(4) NOT NULL default '1',
+     weight int(11) NOT NULL default '0',
+	 publtime int(11) unsigned NOT NULL default '0',
+	 exptime int(11) unsigned NOT NULL default '0',
+	 archive tinyint(1) unsigned NOT NULL default '0',
+	 title varchar(250) NOT NULL default '',
+	 alias varchar(250) NOT NULL default '',
+	 hometext text NOT NULL,
+	 homeimgfile varchar(255) default '',
+	 homeimgalt varchar(255) default '',
+	 homeimgthumb tinyint(4) NOT NULL default '0',
+	 inhome tinyint(1) unsigned NOT NULL default '0',
+	 allowed_comm varchar(255) default '',
+	 allowed_rating tinyint(1) unsigned NOT NULL default '0',
+     external_link tinyint(1) unsigned NOT NULL default '0',
+	 hitstotal mediumint(8) unsigned NOT NULL default '0',
+	 hitscm mediumint(8) unsigned NOT NULL default '0',
+	 total_rating int(11) NOT NULL default '0',
+	 click_rating int(11) NOT NULL default '0',
+	 instant_active tinyint(1) NOT NULL default '0',
+     instant_template varchar(100) NOT NULL default '',
+	 instant_creatauto tinyint(1) NOT NULL default '0',
+	 PRIMARY KEY (id),
+	 KEY catid (catid),
+	 KEY topicid (topicid),
+	 KEY admin_id (admin_id),
+	 KEY author (author),
+	 KEY title (title),
+	 KEY addtime (addtime),
+	 KEY edittime (edittime),
+	 KEY publtime (publtime),
+	 KEY exptime (exptime),
+	 KEY status (status),
+	 KEY instant_active (instant_active),
+	 KEY instant_creatauto (instant_creatauto)
+	) ENGINE=MyISAM" );
+}
+function nv_create_table_cat($catid, $weight, $viewcat, $module_data, $name, $slug, $admin_id, $parent = 0, $description = '', $inhome) {
+	global $db, $lang_fix;
+	$sql = "INSERT INTO " . $lang_fix . "_" . $module_data . "_cat ( catid,  parentid, title, titlesite, alias, description, image, viewdescription, weight, sort, lev, viewcat, numsubcat, subcatid, inhome, numlinks, newday, keywords, admins, add_time, edit_time, groups_view) VALUES
+			( :catid, :parentid, :title, :titlesite, :alias, :description, '', '', :weight, '0', '0', :viewcat, '0', :subcatid, :inhome, '3', '2', :keywords, :admins, " . NV_CURRENTTIME . ", " . NV_CURRENTTIME . ", :groups_view)";
+
+	$data_insert = array ();
+	$data_insert ['catid'] = $catid;
+	$data_insert ['parentid'] = $parent;
+	$data_insert ['title'] = $name;
+	$data_insert ['titlesite'] = $name;
+	$data_insert ['alias'] = $slug;
+	$data_insert ['description'] = $description;
+	$data_insert ['weight'] = $weight;
+	$data_insert ['viewcat'] = $viewcat;
+	$data_insert ['subcatid'] = '';
+	$data_insert ['keywords'] = '';
+	$data_insert ['admins'] = '';
+	$data_insert ['inhome'] = $inhome;
+	$data_insert ['groups_view'] = '6';
+	$newcatid = 0;
+	try {
+		$stmt = $db->prepare ( $sql );
+		foreach ( array_keys ( $data_insert ) as $key ) {
+			$stmt->bindParam ( ':' . $key, $data_insert [$key], PDO::PARAM_STR, strlen ( $data_insert [$key] ) );
+		}
+
+		$stmt->execute ();
+		$newcatid = $db->lastInsertId ();
+	} catch ( PDOException $e ) {
+		echo '<pre>';
+		print_r ( $e );
+		echo '</pre>';
+		die ();
+	}
+
+	if ($newcatid > 0) {
+		try {
+			nv_create_table_news ( NV_LANG_DATA, $module_data, $newcatid );
+		} catch ( PDOException $e ) {
+			die ( $e->getMessage () );
+		}
+
+		if (! defined ( 'NV_IS_ADMIN_MODULE' )) {
+			$db->query ( 'INSERT INTO ' . $lang_fix . '_' . $module_data . '_admins (userid, catid, admin, add_content, pub_content, edit_content, del_content) VALUES (' . $admin_id . ', ' . $newcatid . ', 1, 1, 1, 1, 1)' );
+		}
+	} else {
+		$error .= '<br>Error: ' . $data_insert ['title'];
+		print_r ( $data_insert );
+		echo '<br/>' . $sql;
+		die ( $error );
+	}
+}
+function nv_get_plaintext($string, $keep_image = false, $keep_link = false) {
+	// Get image tags
+	if ($keep_image) {
+		if (preg_match_all ( "/\<img[^\>]*src=\"([^\"]*)\"[^\>]*\>/is", $string, $match )) {
+			foreach ( $match [0] as $key => $_m ) {
+				$textimg = '';
+				if (strpos ( $match [1] [$key], 'data:image/png;base64' ) === false) {
+					$textimg = " " . $match [1] [$key];
+				}
+				if (preg_match_all ( "/\<img[^\>]*alt=\"([^\"]+)\"[^\>]*\>/is", $_m, $m_alt )) {
+					$textimg .= " " . $m_alt [1] [0];
+				}
+				$string = str_replace ( $_m, $textimg, $string );
+			}
+		}
+	}
+
+	// Get link tags
+	if ($keep_link) {
+		if (preg_match_all ( "/\<a[^\>]*href=\"([^\"]+)\"[^\>]*\>(.*)\<\/a\>/isU", $string, $match )) {
+			foreach ( $match [0] as $key => $_m ) {
+				$string = str_replace ( $_m, $match [1] [$key] . " " . $match [2] [$key], $string );
+			}
+		}
+	}
+
+	$string = str_replace ( ' ', ' ', strip_tags ( $string ) );
+	return preg_replace ( '/[ ]+/', ' ', $string );
+}
+
+/* Đổi tên */
+function string_to_filename($word) {
+	if (defined ( 'NV_LANG_DATA' ) and file_exists ( NV_ROOTDIR . '/includes/utf8/lookup_' . NV_LANG_DATA . '.php' )) {
+		include NV_ROOTDIR . '/includes/utf8/lookup_' . NV_LANG_DATA . '.php';
+		$word = strtr ( $word, $utf8_lookup_lang );
+	}
+
+	if (file_exists ( NV_ROOTDIR . '/includes/utf8/lookup.php' )) {
+		$utf8_lookup = false;
+		include NV_ROOTDIR . '/includes/utf8/lookup.php';
+		$word = strtr ( $word, $utf8_lookup ['romanize'] );
+	}
+
+	$word = rawurldecode ( $word );
+	$word = preg_replace ( '/[^a-z0-9\.\-\_ ]/i', '', $word );
+	$word = preg_replace ( '/^\W+|\W+$/', '', $word );
+	$word = preg_replace ( '/[ ]+/', '-', $word );
+	$word = str_replace ( '%20', '-', $word );
+
+	if (preg_match ( '/([^\/]+)\.([a-zA-Z0-9]+)$/', $word, $_m )) {
+		$word = change_alias ( $_m [1] ) . '.' . $_m [2];
+	}
+	return strtolower ( preg_replace ( '/\W-/', '', $word ) );
+}
